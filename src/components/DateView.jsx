@@ -14,6 +14,7 @@ export default function DateView({ API_URL }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [dayLoading, setDayLoading] = useState(false); // ← NUEVO
   
   const nombreInputRef = useRef(null);
 
@@ -29,13 +30,15 @@ export default function DateView({ API_URL }) {
     }
   }, [showForm]);
 
-  // Refrescar turnos cada 30 segundos para actualizar disponibilidad
+  // Auto-refresh cada 30 segundos (solo para el día seleccionado)
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchTurnos();
+      if (selectedDate) {
+        fetchTurnosForDay(selectedDate);
+      }
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedDate]);
 
   const getTodayString = () => {
     const today = new Date();
@@ -88,11 +91,13 @@ export default function DateView({ API_URL }) {
     return names[dayNum];
   };
 
+  // Fetch inicial (todos los turnos)
   const fetchTurnos = async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}?action=getTurnos`);
       const data = await res.json();
+      console.log('📊 Turnos recibidos:', data.length);
       setTurnos(data);
     } catch (e) {
       console.error(e);
@@ -101,37 +106,54 @@ export default function DateView({ API_URL }) {
     setLoading(false);
   };
 
-  // FUNCIÓN CLAVE: Filtrar turnos pasados
-  const getTurnosForDate = (dateStr) => {
-  const today = new Date();
-  const todayStr = getTodayString();
-  const currentHour = today.getHours();
-  const currentMinute = today.getMinutes();
-  const currentTimeInMinutes = currentHour * 60 + currentMinute;
-
-  return turnos.filter(t => {
-    // Si no está habilitado, no mostrar
-    if (!t.habilitado) return false;
-    
-    // Si tiene nombre (ya reservado), no mostrar
-    if (t.nombre) return false;
-
-    // Si la fecha es anterior a hoy, no mostrar
-    if (t.fecha < todayStr) return false;
-
-    // Si es hoy, filtrar por horario (con 1 hora de anticipación)
-    if (t.fecha === todayStr) {
-      const [horas, minutos] = t.horario.split(':').map(Number);
-      const turnoTimeInMinutes = horas * 60 + minutos;
-      
-      // Solo mostrar si faltan al menos 60 minutos (1 hora)
-      return turnoTimeInMinutes >= currentTimeInMinutes + 60;
+  // Fetch específico para un día (más rápido y preciso)
+  const fetchTurnosForDay = async (fecha) => {
+    setDayLoading(true);
+    try {
+      const res = await fetch(`${API_URL}?action=getTurnos`);
+      const data = await res.json();
+      console.log(`📅 Turnos para ${fecha}:`, data.length);
+      setTurnos(data);
+    } catch (e) {
+      console.error(e);
     }
+    setDayLoading(false);
+  };
 
-    // Si es fecha futura, mostrar todos los habilitados
-    return true;
-  });
-};
+  // FUNCIÓN CLAVE: Filtrar turnos disponibles
+  const getTurnosForDate = (dateStr) => {
+    const today = new Date();
+    const todayStr = getTodayString();
+    const currentHour = today.getHours();
+    const currentMinute = today.getMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+    return turnos.filter(t => {
+      // 1. Solo turnos de la fecha seleccionada
+      if (t.fecha !== dateStr) return false;
+
+      // 2. Filtrar habilitado (acepta booleano O string)
+      const habilitado = t.habilitado === true || t.habilitado === 'TRUE' || t.habilitado === true;
+      if (!habilitado) {
+        console.log(`❌ Turno ${t.horario} no habilitado:`, t.habilitado);
+        return false;
+      }
+      
+      // 3. Filtrar si ya está reservado
+      const tieneReserva = t.nombre && String(t.nombre).trim() !== '';
+      if (tieneReserva) return false;
+
+      // 4. Si es HOY, aplicar filtro de 1 hora de anticipación
+      if (t.fecha === todayStr) {
+        const [horas, minutos] = t.horario.split(':').map(Number);
+        const turnoTimeInMinutes = horas * 60 + minutos;
+        return turnoTimeInMinutes >= currentTimeInMinutes + 60;
+      }
+
+      // 5. Si es fecha FUTURA, mostrar todos los habilitados y disponibles
+      return true;
+    });
+  };
 
   const handleDateChange = (e) => {
     const newDate = e.target.value;
@@ -139,6 +161,11 @@ export default function DateView({ API_URL }) {
     setSelectedTurno(null);
     setShowForm(false);
     setMsg('');
+    setFormErrors({});
+    // Refetch al cambiar fecha
+    if (newDate) {
+      fetchTurnosForDay(newDate);
+    }
   };
 
   const handleDayClick = (day) => {
@@ -147,6 +174,9 @@ export default function DateView({ API_URL }) {
       setSelectedTurno(null);
       setShowForm(false);
       setMsg('');
+      setFormErrors({});
+      // Refetch al cambiar día
+      fetchTurnosForDay(day.date);
     }
   };
 
@@ -211,7 +241,8 @@ export default function DateView({ API_URL }) {
         setSelectedTurno(null);
         setShowForm(false);
         setFormErrors({});
-        await fetchTurnos();
+        // Refetch después de reservar
+        await fetchTurnosForDay(selectedTurno.fecha);
       } else {
         setMsg('❌ ' + (data.error || 'Error al reservar'));
       }
@@ -366,8 +397,11 @@ export default function DateView({ API_URL }) {
             <span className="turnos-info">Turnos de 30 min</span>
           </div>
 
-          {loading ? (
-            <p className="loading">Cargando turnos...</p>
+          {dayLoading ? (
+            <div className="loading-day">
+              <div className="spinner-small"></div>
+              <p>Actualizando turnos...</p>
+            </div>
           ) : turnosDelDia.length === 0 ? (
             <p className="no-turnos">
               {selectedDate === getTodayString() 
