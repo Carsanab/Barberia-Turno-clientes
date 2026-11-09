@@ -14,7 +14,6 @@ export default function DateView({ API_URL }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [formErrors, setFormErrors] = useState({});
-  const [dayLoading, setDayLoading] = useState(false); // ← NUEVO
   
   const nombreInputRef = useRef(null);
 
@@ -29,16 +28,6 @@ export default function DateView({ API_URL }) {
       nombreInputRef.current.focus();
     }
   }, [showForm]);
-
-  // Auto-refresh cada 30 segundos (solo para el día seleccionado)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (selectedDate) {
-        fetchTurnosForDay(selectedDate);
-      }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [selectedDate]);
 
   const getTodayString = () => {
     const today = new Date();
@@ -91,13 +80,11 @@ export default function DateView({ API_URL }) {
     return names[dayNum];
   };
 
-  // Fetch inicial (todos los turnos)
   const fetchTurnos = async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}?action=getTurnos`);
       const data = await res.json();
-      console.log('📊 Turnos recibidos:', data.length);
       setTurnos(data);
     } catch (e) {
       console.error(e);
@@ -106,21 +93,6 @@ export default function DateView({ API_URL }) {
     setLoading(false);
   };
 
-  // Fetch específico para un día (más rápido y preciso)
-  const fetchTurnosForDay = async (fecha) => {
-    setDayLoading(true);
-    try {
-      const res = await fetch(`${API_URL}?action=getTurnos`);
-      const data = await res.json();
-      console.log(`📅 Turnos para ${fecha}:`, data.length);
-      setTurnos(data);
-    } catch (e) {
-      console.error(e);
-    }
-    setDayLoading(false);
-  };
-
-  // FUNCIÓN CLAVE: Filtrar turnos disponibles
   const getTurnosForDate = (dateStr) => {
     const today = new Date();
     const todayStr = getTodayString();
@@ -132,12 +104,9 @@ export default function DateView({ API_URL }) {
       // 1. Solo turnos de la fecha seleccionada
       if (t.fecha !== dateStr) return false;
 
-      // 2. Filtrar habilitado (acepta booleano O string)
-      const habilitado = t.habilitado === true || t.habilitado === 'TRUE' || t.habilitado === true;
-      if (!habilitado) {
-        console.log(`❌ Turno ${t.horario} no habilitado:`, t.habilitado);
-        return false;
-      }
+      // 2. Filtrar habilitado (acepta booleano O string 'TRUE')
+      const habilitado = t.habilitado === true || t.habilitado === 'TRUE';
+      if (!habilitado) return false;
       
       // 3. Filtrar si ya está reservado
       const tieneReserva = t.nombre && String(t.nombre).trim() !== '';
@@ -162,10 +131,7 @@ export default function DateView({ API_URL }) {
     setShowForm(false);
     setMsg('');
     setFormErrors({});
-    // Refetch al cambiar fecha
-    if (newDate) {
-      fetchTurnosForDay(newDate);
-    }
+    if (newDate) fetchTurnos();
   };
 
   const handleDayClick = (day) => {
@@ -175,8 +141,7 @@ export default function DateView({ API_URL }) {
       setShowForm(false);
       setMsg('');
       setFormErrors({});
-      // Refetch al cambiar día
-      fetchTurnosForDay(day.date);
+      fetchTurnos();
     }
   };
 
@@ -241,8 +206,7 @@ export default function DateView({ API_URL }) {
         setSelectedTurno(null);
         setShowForm(false);
         setFormErrors({});
-        // Refetch después de reservar
-        await fetchTurnosForDay(selectedTurno.fecha);
+        await fetchTurnos();
       } else {
         setMsg('❌ ' + (data.error || 'Error al reservar'));
       }
@@ -397,11 +361,8 @@ export default function DateView({ API_URL }) {
             <span className="turnos-info">Turnos de 30 min</span>
           </div>
 
-          {dayLoading ? (
-            <div className="loading-day">
-              <div className="spinner-small"></div>
-              <p>Actualizando turnos...</p>
-            </div>
+          {loading ? (
+            <p className="loading">Cargando turnos...</p>
           ) : turnosDelDia.length === 0 ? (
             <p className="no-turnos">
               {selectedDate === getTodayString() 
