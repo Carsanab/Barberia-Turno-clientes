@@ -23,12 +23,19 @@ export default function DateView({ API_URL }) {
     generateWeekDays(0);
   }, []);
 
-  // Foco automático cuando se muestra el formulario
   useEffect(() => {
     if (showForm && nombreInputRef.current) {
       nombreInputRef.current.focus();
     }
   }, [showForm]);
+
+  // Refrescar turnos cada 30 segundos para actualizar disponibilidad
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTurnos();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const getTodayString = () => {
     const today = new Date();
@@ -94,9 +101,37 @@ export default function DateView({ API_URL }) {
     setLoading(false);
   };
 
+  // FUNCIÓN CLAVE: Filtrar turnos pasados
   const getTurnosForDate = (dateStr) => {
-    return turnos.filter(t => t.fecha === dateStr);
-  };
+  const today = new Date();
+  const todayStr = getTodayString();
+  const currentHour = today.getHours();
+  const currentMinute = today.getMinutes();
+  const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+  return turnos.filter(t => {
+    // Si no está habilitado, no mostrar
+    if (!t.habilitado) return false;
+    
+    // Si tiene nombre (ya reservado), no mostrar
+    if (t.nombre) return false;
+
+    // Si la fecha es anterior a hoy, no mostrar
+    if (t.fecha < todayStr) return false;
+
+    // Si es hoy, filtrar por horario (con 1 hora de anticipación)
+    if (t.fecha === todayStr) {
+      const [horas, minutos] = t.horario.split(':').map(Number);
+      const turnoTimeInMinutes = horas * 60 + minutos;
+      
+      // Solo mostrar si faltan al menos 60 minutos (1 hora)
+      return turnoTimeInMinutes >= currentTimeInMinutes + 60;
+    }
+
+    // Si es fecha futura, mostrar todos los habilitados
+    return true;
+  });
+};
 
   const handleDateChange = (e) => {
     const newDate = e.target.value;
@@ -123,7 +158,6 @@ export default function DateView({ API_URL }) {
     }
   };
 
-  // Validación de formulario
   const validateForm = () => {
     const errors = {};
     
@@ -152,8 +186,6 @@ export default function DateView({ API_URL }) {
     if (!validateForm()) {
       return;
     }
-    
-    // Mostrar modal de confirmación
     setShowConfirmModal(true);
   };
 
@@ -210,10 +242,8 @@ export default function DateView({ API_URL }) {
     return '';
   };
 
-  // Solo permitir números en el teléfono
   const handleTelefonoChange = (e) => {
     const value = e.target.value;
-    // Solo permitir números
     const soloNumeros = value.replace(/\D/g, '');
     setTelefono(soloNumeros);
     if (formErrors.telefono) {
@@ -339,22 +369,23 @@ export default function DateView({ API_URL }) {
           {loading ? (
             <p className="loading">Cargando turnos...</p>
           ) : turnosDelDia.length === 0 ? (
-            <p className="no-turnos">No hay turnos para este día</p>
+            <p className="no-turnos">
+              {selectedDate === getTodayString() 
+                ? 'No hay más turnos disponibles para hoy 😔' 
+                : 'No hay turnos disponibles para este día 😔'}
+            </p>
           ) : (
             <div className="turnos-grid-modern">
               {turnosDelDia.map(turno => (
                 <button
                   key={turno.id}
-                  className={`turno-card ${
-                    turno.nombre ? 'ocupado' : 'disponible'
-                  } ${selectedTurno?.id === turno.id ? 'selected' : ''}`}
-                  onClick={() => !turno.nombre && setSelectedTurno(turno)}
-                  disabled={!!turno.nombre}
+                  className={`turno-card disponible ${selectedTurno?.id === turno.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedTurno(turno)}
                 >
                   <span className="turno-time">{turno.horario}</span>
-                  <span className={`turno-badge ${turno.nombre ? 'badge-ocupado' : 'badge-disponible'}`}>
+                  <span className="turno-badge badge-disponible">
                     <span className="badge-dot"></span>
-                    {turno.nombre ? 'OCUPADO' : 'DISPONIBLE'}
+                    DISPONIBLE
                   </span>
                 </button>
               ))}
@@ -413,29 +444,23 @@ export default function DateView({ API_URL }) {
 
       {/* MODAL DE CONFIRMACIÓN */}
       {showConfirmModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-icon">
-              <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#e94560" strokeWidth="2">
-                <path d="M9 11l3 3L22 4"/>
-                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
+          <div className="confirm-modal-client" onClick={e => e.stopPropagation()}>
+            <div className="modal-icon-container confirm">
+              <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="#4caf50" strokeWidth="2">
+                <path d="M20 6L9 17l-5-5"/>
               </svg>
             </div>
-            <h3>Reserva a confirmar</h3>
-            <p className="modal-details">
-              <strong>{getDayNameFull(selectedTurno.fecha)}</strong><br/>
-              {formatDateDisplay(selectedTurno.fecha)} a las {selectedTurno.horario}
+            <h3>Confirmar Reserva</h3>
+            <p className="modal-message">
+              ¿Confirmás tu turno para el <strong>{getDayNameFull(selectedTurno.fecha)} {formatDateDisplay(selectedTurno.fecha)}</strong> a las <strong>{selectedTurno.horario}</strong>?
             </p>
-            <p className="modal-client">
-              {nombre}<br/>
-              {telefono}
-            </p>
-            <div className="modal-actions">
+            <div className="modal-actions-confirm">
               <button className="btn-modal-cancel" onClick={() => setShowConfirmModal(false)}>
                 Cancelar
               </button>
-              <button className="btn-modal-confirm" onClick={confirmarReserva}>
-                ✅ Confirmar
+              <button className="btn-modal-confirm confirm" onClick={confirmarReserva}>
+                ✅ Sí, confirmar
               </button>
             </div>
           </div>

@@ -641,3 +641,114 @@ body {
     transform: translateY(0);
   }
 }
+
+/* MODAL CONFIRMACIÓN CLIENTE */
+.confirm-modal-client {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #4caf50;
+  border-radius: 20px;
+  padding: 30px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(76, 175, 80, 0.3);
+  animation: slideUp 0.3s ease-out;
+  text-align: center;
+}
+
+.confirm-modal-client h3 {
+  font-size: 1.4rem;
+  color: #fff;
+  margin-bottom: 15px;
+  font-weight: 700;
+}
+
+.confirm-modal-client .modal-message {
+  color: #aaa;
+  font-size: 1rem;
+  line-height: 1.6;
+  margin-bottom: 25px;
+}
+
+.confirm-modal-client .modal-message strong {
+  color: #e94560;
+}
+
+.modal-icon-container.confirm {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(76, 175, 80, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  animation: scaleIn 0.5s ease-out;
+}
+
+.modal-actions-confirm {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-modal-cancel {
+  flex: 1;
+  padding: 14px;
+  background: #2a2a3e;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.btn-modal-cancel:hover {
+  background: #3a3a4e;
+}
+
+.btn-modal-confirm {
+  flex: 1;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: white;
+  transition: all 0.3s;
+}
+
+.btn-modal-confirm.confirm {
+  background: linear-gradient(135deg, #4caf50, #388e3c);
+}
+
+.btn-modal-confirm.confirm:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0) rotate(-180deg); opacity: 0; }
+  to { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(40px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 480px) {
+  .confirm-modal-client {
+    padding: 20px;
+  }
+  
+  .modal-actions-confirm {
+    flex-direction: column;
+  }
+  
+  .btn-modal-cancel,
+  .btn-modal-confirm {
+    width: 100%;
+  }
+}
