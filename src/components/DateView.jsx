@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import ServiceBarberSelect from './ServiceBarberSelect';
 
 export default function DateView({ API_URL }) {
   const [turnos, setTurnos] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedService, setSelectedService] = useState(null);
+  const [selectedBarber, setSelectedBarber] = useState(null);
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
   const [selectedTurno, setSelectedTurno] = useState(null);
@@ -85,7 +88,7 @@ export default function DateView({ API_URL }) {
     try {
       const res = await fetch(`${API_URL}?action=getTurnos`);
       const data = await res.json();
-      setTurnos(data);
+      setTurnos(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
       setMsg('Error al cargar turnos');
@@ -101,27 +104,36 @@ export default function DateView({ API_URL }) {
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
 
     return turnos.filter(t => {
-      // 1. Solo turnos de la fecha seleccionada
       if (t.fecha !== dateStr) return false;
 
-      // 2. Filtrar habilitado (acepta booleano O string 'TRUE')
       const habilitado = t.habilitado === true || t.habilitado === 'TRUE';
       if (!habilitado) return false;
       
-      // 3. Filtrar si ya está reservado
       const tieneReserva = t.nombre && String(t.nombre).trim() !== '';
       if (tieneReserva) return false;
 
-      // 4. Si es HOY, aplicar filtro de 1 hora de anticipación
+      if (selectedBarber && t.barbero !== selectedBarber.nombre) {
+        return false;
+      }
+
       if (t.fecha === todayStr) {
         const [horas, minutos] = t.horario.split(':').map(Number);
         const turnoTimeInMinutes = horas * 60 + minutos;
         return turnoTimeInMinutes >= currentTimeInMinutes + 60;
       }
 
-      // 5. Si es fecha FUTURA, mostrar todos los habilitados y disponibles
       return true;
     });
+  };
+
+  const handleSelect = (type, value) => {
+    if (type === 'service') {
+      setSelectedService(value);
+    } else if (type === 'barber') {
+      setSelectedBarber(value);
+      setSelectedTurno(null);
+      setShowForm(false);
+    }
   };
 
   const handleDateChange = (e) => {
@@ -194,13 +206,15 @@ export default function DateView({ API_URL }) {
           action: 'reservar',
           fecha: selectedTurno.fecha,
           horario: selectedTurno.horario,
+          barbero: selectedTurno.barbero,
+          servicio: selectedService?.nombre || '',
           nombre: nombre.trim(),
           telefono: telefono.trim()
         })
       });
       const data = await res.json();
       if (data.success) {
-        setMsg(`✅ Turno reservado: ${formatDateDisplay(selectedTurno.fecha)} a las ${selectedTurno.horario}`);
+        setMsg(`✅ Turno reservado: ${formatDateDisplay(selectedTurno.fecha)} a las ${selectedTurno.horario} con ${selectedTurno.barbero}`);
         setNombre('');
         setTelefono('');
         setSelectedTurno(null);
@@ -259,6 +273,10 @@ export default function DateView({ API_URL }) {
     return `Semana +${weekOffset}`;
   };
 
+  const formatPrice = (price) => {
+    return `$${parseInt(price).toLocaleString('es-AR')}`;
+  };
+
   return (
     <div className="modern-view">
       {/* HEADER */}
@@ -278,11 +296,19 @@ export default function DateView({ API_URL }) {
 
       {msg && <div className="msg">{msg}</div>}
 
-      {/* PASO 1 - FECHA */}
+      {/* PASO 1 y 2: SERVICIO Y BARBERO */}
+      <ServiceBarberSelect 
+        API_URL={API_URL}
+        onSelect={handleSelect}
+        selectedService={selectedService}
+        selectedBarber={selectedBarber}
+      />
+
+      {/* PASO 3 - FECHA */}
       <div className="step-section">
         <div className="step-label">
-          Seleccioná una fecha:
-          <span className="step-badge">PASO 1</span>
+          <span>Seleccioná una fecha:</span>
+          <span className="step-badge">PASO 3</span>
         </div>
         
         <div className="date-card">
@@ -319,7 +345,7 @@ export default function DateView({ API_URL }) {
             onClick={() => handleWeekChange(-1)}
             disabled={weekOffset === 0}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
           </button>
@@ -328,7 +354,7 @@ export default function DateView({ API_URL }) {
             className="week-nav-btn" 
             onClick={() => handleWeekChange(1)}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="9 18 15 12 9 6"/>
             </svg>
           </button>
@@ -357,6 +383,7 @@ export default function DateView({ API_URL }) {
             <h2>
               <span className="red-dot"></span>
               {getDayNameFull(selectedDate)} {formatDateDisplay(selectedDate)}
+              {selectedBarber && <span className="barber-filter"> con {selectedBarber.nombre}</span>}
             </h2>
             <span className="turnos-info">Turnos de 30 min</span>
           </div>
@@ -382,6 +409,9 @@ export default function DateView({ API_URL }) {
                     <span className="badge-dot"></span>
                     DISPONIBLE
                   </span>
+                  {turno.barbero && (
+                    <span className="turno-barber">{turno.barbero}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -395,6 +425,8 @@ export default function DateView({ API_URL }) {
           <h3>Completá tus datos</h3>
           <p className="form-info">
             {getDayNameFull(selectedTurno.fecha)} {formatDateDisplay(selectedTurno.fecha)} a las {selectedTurno.horario}
+            {selectedTurno.barbero && <><br/>Con: <strong>{selectedTurno.barbero}</strong></>}
+            {selectedService && <><br/>Servicio: <strong>{selectedService.nombre}</strong> ({formatPrice(selectedService.precio)})</>}
           </p>
           
           <div className="form-inputs-modern">
@@ -448,7 +480,10 @@ export default function DateView({ API_URL }) {
             </div>
             <h3>Confirmar Reserva</h3>
             <p className="modal-message">
-              ¿Confirmás tu turno para el <strong>{getDayNameFull(selectedTurno.fecha)} {formatDateDisplay(selectedTurno.fecha)}</strong> a las <strong>{selectedTurno.horario}</strong>?
+              ¿Confirmás tu turno para el <strong>{getDayNameFull(selectedTurno.fecha)} {formatDateDisplay(selectedTurno.fecha)}</strong> a las <strong>{selectedTurno.horario}</strong>
+              {selectedTurno.barbero && <> con <strong>{selectedTurno.barbero}</strong></>}
+              {selectedService && <> ({selectedService.nombre})</>}
+              ?
             </p>
             <div className="modal-actions-confirm">
               <button className="btn-modal-cancel" onClick={() => setShowConfirmModal(false)}>
